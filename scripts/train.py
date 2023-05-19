@@ -5,7 +5,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import LearningRateMonitor
 from torchvision import transforms
 
-from slot_attention.data import CLEVRDataModule
+from slot_attention.data import CLEVRDataModule, CLEVRwithMaskDataModule
 from slot_attention.method import SlotAttentionMethod
 from slot_attention.model import SlotAttentionModel
 from slot_attention.params import SlotAttentionParams
@@ -14,20 +14,7 @@ from slot_attention.utils import rescale
 
 from datetime import datetime
 
-
-def main(params: Optional[SlotAttentionParams] = None):
-    if params is None:
-        params = SlotAttentionParams()
-
-    assert params.num_slots > 1, "Must have at least 2 slots."
-
-    if params.is_verbose:
-        print(f"INFO: limiting the dataset to only images with `num_slots - 1` ({params.num_slots - 1}) objects.")
-        if params.num_train_images:
-            print(f"INFO: restricting the train dataset size to `num_train_images`: {params.num_train_images}")
-        if params.num_val_images:
-            print(f"INFO: restricting the validation dataset size to `num_val_images`: {params.num_val_images}")
-
+def get_clevr_dataset(params):
     clevr_transforms = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -36,7 +23,7 @@ def main(params: Optional[SlotAttentionParams] = None):
         ]
     )
 
-    clevr_datamodule = CLEVRDataModule(
+    return CLEVRDataModule(
         data_root=params.data_root,
         max_n_objects=10,
         train_batch_size=params.batch_size,
@@ -46,7 +33,42 @@ def main(params: Optional[SlotAttentionParams] = None):
         num_val_images=params.num_val_images,
         num_workers=params.num_workers,
     )
+    
+def get_clevr_with_mask_dataset(params):
+    clevr_transforms = {
+        'image': transforms.Compose([
+            transforms.CenterCrop(192),
+            transforms.Resize(128, transforms.InterpolationMode.NEAREST)
+        ]),     
+        'mask': transforms.Compose([
+            transforms.CenterCrop(192),
+            transforms.Resize(128, transforms.InterpolationMode.NEAREST)
+        ])
+    }
 
+    return CLEVRwithMaskDataModule(
+        data_root=params.data_root,
+        train_batch_size=params.batch_size,
+        val_batch_size=params.val_batch_size,
+        clevr_transforms=clevr_transforms,
+        num_train_images=params.num_train_images,
+        num_val_images=params.num_val_images,
+        num_workers=params.num_workers,
+    )
+
+def main(params: Optional[SlotAttentionParams] = None):
+    if params is None:
+        params = SlotAttentionParams()
+
+    assert params.num_slots > 1, "Must have at least 2 slots."
+
+    if params.is_verbose:
+        if params.num_train_images:
+            print(f"INFO: restricting the train dataset size to `num_train_images`: {params.num_train_images}")
+        if params.num_val_images:
+            print(f"INFO: restricting the validation dataset size to `num_val_images`: {params.num_val_images}")
+
+    clevr_datamodule = get_clevr_dataset(params) if not params.clevr_with_mask else get_clevr_with_mask_dataset()
 
     model = SlotAttentionModel(
         resolution=params.resolution,
