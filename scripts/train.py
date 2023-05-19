@@ -68,7 +68,7 @@ def main(params: Optional[SlotAttentionParams] = None):
         if params.num_val_images:
             print(f"INFO: restricting the validation dataset size to `num_val_images`: {params.num_val_images}")
 
-    clevr_datamodule = get_clevr_dataset(params) if not params.clevr_with_mask else get_clevr_with_mask_dataset()
+    clevr_datamodule = get_clevr_dataset(params) if not params.clevr_with_mask else get_clevr_with_mask_dataset(params)
 
     model = SlotAttentionModel(
         resolution=params.resolution,

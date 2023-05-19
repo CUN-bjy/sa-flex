@@ -56,7 +56,7 @@ class SlotAttentionMethod(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx, optimizer_idx=0):
         val_loss = self.model.loss_function(batch)
-        self.validation_step_outputs.append(val_loss)
+        self.validation_step_outputs.append(val_loss.item())
         return val_loss
 
     def on_validation_epoch_end(self):

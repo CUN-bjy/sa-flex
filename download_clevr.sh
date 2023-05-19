@@ -24,4 +24,4 @@ unzip -q CLEVR_v1.0.zip
 
 
 
-mv /tmp/data/CLEVR_v1.0 ./CLEVR_v1.0
+mv /tmp/data/CLEVR_v1.0 ./src/dataset/data/CLEVR_v1.0

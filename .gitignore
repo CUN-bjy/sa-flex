@@ -163,3 +163,4 @@ CLEVR_v1.0/*
 logs/*
 wandb/*
 *.ckpt
+src/dataset/data*

@@ -2,5 +2,8 @@ wandb
 torch
 torchvision
 pytorch-lightning
+h5py
+gsutil
+tensorflow
 
 -e .

@@ -213,7 +213,7 @@ class MultiObjectDataset(VisionDataset):
 
         # 4. dynamically import one of: cater_with_masks, clevr_with_masks, multi_dsprites, objects_room, tetrominoes
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'  # set log level WARN
-        tf_module = importlib.import_module(f'saflex.dataset.{self.tf_module}')
+        tf_module = importlib.import_module(f'dataset.{self.tf_module}')
 
         # 5. initialize the TFRecord dataset (some need a version string)
         if self.version is None:
