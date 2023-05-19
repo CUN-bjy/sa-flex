@@ -2,11 +2,15 @@ import pytorch_lightning as pl
 import torch
 from torch import optim
 from torchvision import utils as vutils
+from torch.nn import functional as F
+import numpy as np
 
 from slot_attention.model import SlotAttentionModel
 from slot_attention.params import SlotAttentionParams
 from slot_attention.utils import Tensor
 from slot_attention.utils import to_rgb_from_tensor
+
+from slot_attention.evaluator import adjusted_rand_index
 
 
 class SlotAttentionMethod(pl.LightningModule):
@@ -21,6 +25,9 @@ class SlotAttentionMethod(pl.LightningModule):
         return self.model(input, **kwargs)
 
     def training_step(self, batch, batch_idx, optimizer_idx=0):
+        if self.params.clevr_with_mask:
+            batch, gt_masks = batch["image"], batch["mask"]
+        
         train_loss = self.model.loss_function(batch)
         logs = {key: val.item() for key, val in train_loss.items()}
         self.log_dict(logs, sync_dist=True)
@@ -30,9 +37,14 @@ class SlotAttentionMethod(pl.LightningModule):
         dl = self.datamodule.val_dataloader()
         perm = torch.randperm(self.params.batch_size)
         idx = perm[: self.params.n_samples]
-        batch = next(iter(dl))[idx]
+        if self.params.clevr_with_mask:
+            batch = next(iter(dl))['image'][idx]
+        else:
+            batch = next(iter(dl))[idx]
+            
         if self.params.gpus > 0:
             batch = batch.to(self.device)
+
         recon_combined, recons, masks, slots = self.model.forward(batch)
 
         # combine images in a nice way so we can display all outputs in one grid, output rescaled to be between 0 and 1
@@ -55,17 +67,32 @@ class SlotAttentionMethod(pl.LightningModule):
         return images
 
     def validation_step(self, batch, batch_idx, optimizer_idx=0):
-        val_loss = self.model.loss_function(batch)
-        self.validation_step_outputs.append(val_loss.item())
+        if self.params.clevr_with_mask:
+            batch, gt_masks = batch["image"], batch["mask"]
+        
+        recon_combined, recons, masks, slots = self.model.forward(batch)
+        
+        val_loss = F.mse_loss(recon_combined, batch)
+        
+        if self.params.clevr_with_mask:    
+            ari = adjusted_rand_index(gt_masks, masks, exclude_background=False).mean()
+            fgari = adjusted_rand_index(gt_masks, masks).mean()
+            self.validation_step_outputs.append({"loss": val_loss.item(), "ARI": ari.item(), "FG-ARI": fgari.item()})
+        else:
+            self.validation_step_outputs.append({"loss": val_loss.item()})
         return val_loss
 
     def on_validation_epoch_end(self):
-        avg_loss = torch.stack([x["loss"] for x in self.validation_step_outputs]).mean()
+        avg_loss = np.array([x["loss"] for x in self.validation_step_outputs]).mean()
+        avg_ari = np.array([x["ARI"] for x in self.validation_step_outputs]).mean()
+        avg_fgari = np.array([x["FG-ARI"] for x in self.validation_step_outputs]).mean()
         logs = {
             "avg_val_loss": avg_loss,
+            "avg_ari": avg_ari,
+            "avr_fgari": avg_fgari,
         }
         self.log_dict(logs, sync_dist=True)
-        print("; ".join([f"{k}: {v.item():.6f}" for k, v in logs.items()]))
+        print("; ".join([f"{k}: {v:.6f}" for k, v in logs.items()]))
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.model.parameters(), lr=self.params.lr, weight_decay=self.params.weight_decay)

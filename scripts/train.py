@@ -4,6 +4,7 @@ import pytorch_lightning.loggers as pl_loggers
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import LearningRateMonitor
 from torchvision import transforms
+import torch
 
 from slot_attention.data import CLEVRDataModule, CLEVRwithMaskDataModule
 from slot_attention.method import SlotAttentionMethod
@@ -38,11 +39,13 @@ def get_clevr_with_mask_dataset(params):
     clevr_transforms = {
         'image': transforms.Compose([
             transforms.CenterCrop(192),
-            transforms.Resize(128, transforms.InterpolationMode.NEAREST)
+            transforms.Resize(128, transforms.InterpolationMode.NEAREST),
+            transforms.ConvertImageDtype(torch.float32)
         ]),     
         'mask': transforms.Compose([
             transforms.CenterCrop(192),
-            transforms.Resize(128, transforms.InterpolationMode.NEAREST)
+            transforms.Resize(128, transforms.InterpolationMode.NEAREST),
+            transforms.ConvertImageDtype(torch.float32)
         ])
     }
 
@@ -78,9 +81,10 @@ def main(params: Optional[SlotAttentionParams] = None):
     )
 
     method = SlotAttentionMethod(model=model, datamodule=clevr_datamodule, params=params)
-
-    logger_name = f"{datetime.today()}-sa-clevr-n5"
-    logger = pl_loggers.WandbLogger(project="sa-flex", name=logger_name)
+    
+    if params.is_logger_enabled:
+        logger_name = f"{datetime.today()}-sa-clevr-n5"
+        logger = pl_loggers.WandbLogger(project="sa-flex", name=logger_name)
 
     trainer = Trainer(
         logger=logger if params.is_logger_enabled else False,
