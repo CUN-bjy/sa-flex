@@ -24,7 +24,7 @@ def adjusted_rand_index(true_mask, pred_mask, exclude_background=True):
     true_mask_oh = torch.nn.functional.one_hot(true_group_ids, true_groups).float()
     # exclude background
     if exclude_background:
-        true_mask_oh[...,0] = 0
+        true_mask_oh[..., 0] = 0
 
     # take argmax across slots for predicted masks
     pred_mask = pred_mask.squeeze(2)  # [N, K, H, W]

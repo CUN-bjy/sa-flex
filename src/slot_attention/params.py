@@ -7,6 +7,8 @@ import attr
 
 @attr.s(auto_attribs=True)
 class SlotAttentionParams:
+    prefix: str = "sa-clevr-n5"
+    seed: int = 0
     lr: float = 0.0004
     batch_size: int = 10
     val_batch_size: int = 10

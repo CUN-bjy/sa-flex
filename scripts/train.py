@@ -1,7 +1,7 @@
 from typing import Optional
 
 import pytorch_lightning.loggers as pl_loggers
-from pytorch_lightning import Trainer
+from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor
 from torchvision import transforms
 import torch
@@ -14,6 +14,7 @@ from slot_attention.utils import ImageLogCallback
 from slot_attention.utils import rescale
 
 from datetime import datetime
+import dcargs
 
 def get_clevr_dataset(params):
     clevr_transforms = transforms.Compose(
@@ -59,7 +60,25 @@ def get_clevr_with_mask_dataset(params):
         num_workers=params.num_workers,
     )
 
+def _create_prefix(args: dict):
+    assert (
+        args["prefix"] is not None and args["prefix"] != ""
+    ), "Must specify a prefix to use W&B"
+    d = datetime.today()
+    date_id = f"{d.month}{d.day}{d.hour}{d.minute}{d.second}"
+    before = f"{date_id}-{args['seed']}-"
+
+    if args["prefix"] != "debug" and args["prefix"] != "NONE":
+        prefix = before + args["prefix"]
+        print("Assigning full prefix %s" % prefix)
+    else:
+        prefix = args["prefix"]
+
+    return prefix
+
 def main(params: Optional[SlotAttentionParams] = None):
+    seed_everything(params.seed, workers=True)
+    
     if params is None:
         params = SlotAttentionParams()
 
@@ -83,13 +102,18 @@ def main(params: Optional[SlotAttentionParams] = None):
     method = SlotAttentionMethod(model=model, datamodule=clevr_datamodule, params=params)
     
     if params.is_logger_enabled:
-        logger_name = f"{datetime.today()}-sa-clevr-n5"
-        logger = pl_loggers.WandbLogger(project="sa-flex", name=logger_name)
+        prefix_args = {
+            "prefix": params.prefix,
+            "seed": params.seed,
+        }
+        logger_name = _create_prefix(prefix_args)
+        logger = pl_loggers.WandbLogger(project="sa-flex", name=logger_name, config=params)
 
     trainer = Trainer(
         logger=logger if params.is_logger_enabled else False,
         accelerator="cuda",
-        strategy="ddp" if params.gpus > 1 else None,
+        strategy="auto",
+        # strategy="ddp" if params.gpus > 1 else None,
         num_sanity_val_steps=params.num_sanity_val_steps,
         devices=params.gpus,
         max_epochs=params.max_epochs,
@@ -100,4 +124,5 @@ def main(params: Optional[SlotAttentionParams] = None):
 
 
 if __name__ == "__main__":
-    main()
+    params = dcargs.parse(SlotAttentionParams, description=__doc__)
+    main(params)
