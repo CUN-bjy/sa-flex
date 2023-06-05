@@ -108,6 +108,7 @@ class SlotAttentionModel(nn.Module):
         slot_size: int = 64,
         hidden_dims: Tuple[int, ...] = (64, 64, 64, 64),
         decoder_resolution: Tuple[int, int] = (8, 8),
+        reg_weight: float = 1e-2,
         empty_cache=False,
     ):
         super().__init__()
@@ -121,6 +122,7 @@ class SlotAttentionModel(nn.Module):
         self.hidden_dims = hidden_dims
         self.decoder_resolution = decoder_resolution
         self.out_features = self.hidden_dims[-1]
+        self.reg_weight = reg_weight
 
         modules = []
         channels = self.in_channels
@@ -236,7 +238,9 @@ class SlotAttentionModel(nn.Module):
 
     def loss_function(self, input):
         recon_combined, recons, masks, slots = self.forward(input)
-        loss = F.mse_loss(recon_combined, input)
+        mse_loss = F.mse_loss(recon_combined, input)
+        sparse_loss = torch.mean(torch.abs(F.relu(slots)))
+        loss = mse_loss + self.reg_weight*sparse_loss
         return {
             "loss": loss,
         }

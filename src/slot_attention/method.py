@@ -72,22 +72,28 @@ class SlotAttentionMethod(pl.LightningModule):
         
         recon_combined, recons, masks, slots = self.model.forward(batch)
         
-        val_loss = F.mse_loss(recon_combined, batch)
+        mse_loss = F.mse_loss(recon_combined, batch)
+        sparse_loss = torch.mean(torch.abs(F.relu(slots)))
+        val_loss = mse_loss + self.params.reg_weight * sparse_loss
         
         if self.params.clevr_with_mask:    
             ari = adjusted_rand_index(gt_masks, masks, exclude_background=False).mean()
             fgari = adjusted_rand_index(gt_masks, masks).mean()
-            self.validation_step_outputs.append({"loss": val_loss.item(), "ARI": ari.item(), "FG-ARI": fgari.item()})
+            self.validation_step_outputs.append({"loss": val_loss.item(), "sparse_loss": sparse_loss.item(), "mse_loss": mse_loss.item(), "ARI": ari.item(), "FG-ARI": fgari.item()})
         else:
-            self.validation_step_outputs.append({"loss": val_loss.item()})
+            self.validation_step_outputs.append({"loss": val_loss.item(), "sparse_loss": sparse_loss.item(), "mse_loss": mse_loss.item(),})
         return val_loss
 
     def on_validation_epoch_end(self):
         avg_loss = np.array([x["loss"] for x in self.validation_step_outputs]).mean()
+        avg_sparse_loss = np.array([x["sparse_loss"] for x in self.validation_step_outputs]).mean()
+        avg_mse_loss = np.array([x["mse_loss"] for x in self.validation_step_outputs]).mean()
         avg_ari = np.array([x["ARI"] for x in self.validation_step_outputs]).mean()
         avg_fgari = np.array([x["FG-ARI"] for x in self.validation_step_outputs]).mean()
         logs = {
             "avg_val_loss": avg_loss,
+            "avg_sparse_loss": avg_sparse_loss,
+            "avg_mse_loss": avg_mse_loss,
             "avg_ari": avg_ari,
             "avr_fgari": avg_fgari,
         }

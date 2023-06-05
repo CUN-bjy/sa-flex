@@ -18,6 +18,7 @@ class SlotAttentionParams:
     data_root: str = DATASET_PATH
     gpus: int = 2
     max_epochs: int = 50
+    reg_weight: float = 0.0
     num_sanity_val_steps: int = 1
     scheduler_gamma: float = 0.5
     weight_decay: float = 0.0
