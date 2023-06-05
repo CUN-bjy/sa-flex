@@ -149,6 +149,8 @@ class SlotAttentionModel(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(self.out_features, self.out_features),
         )
+        
+        self.linear_to_mask = nn.Linear(num_slots * slot_size, num_slots)
 
         # Build Decoder
         modules = []
@@ -220,7 +222,14 @@ class SlotAttentionModel(nn.Module):
         assert_shape(slots.size(), (batch_size, self.num_slots, self.slot_size))
         # `slots` has shape: [batch_size, num_slots, slot_size].
         batch_size, num_slots, slot_size = slots.shape
+        
+        # extract slot-wise sparse-mask
+        slots_ = slots.view(batch_size, -1)
+        slotwise_mask = F.relu(torch.sign(F.tanh(self.linear_to_mask(slots_))))
 
+        # slots with sparse-mask
+        slots = slots * slotwise_mask.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
+        
         slots = slots.view(batch_size * num_slots, slot_size, 1, 1)
         decoder_in = slots.repeat(1, 1, self.decoder_resolution[0], self.decoder_resolution[1])
 
