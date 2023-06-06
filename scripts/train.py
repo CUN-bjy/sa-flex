@@ -98,6 +98,7 @@ def main(params: Optional[SlotAttentionParams] = None):
         num_iterations=params.num_iterations,
         empty_cache=params.empty_cache,
         reg_weight=params.reg_weight,
+        use_sparse_mask=params.use_sparse_mask,
     )
 
     method = SlotAttentionMethod(model=model, datamodule=clevr_datamodule, params=params)
@@ -113,8 +114,8 @@ def main(params: Optional[SlotAttentionParams] = None):
     trainer = Trainer(
         logger=logger if params.is_logger_enabled else False,
         accelerator="cuda",
-        strategy="auto",
-        # strategy="ddp" if params.gpus > 1 else None,
+        # strategy="auto",
+        strategy="ddp" if params.gpus > 1 else "auto",
         num_sanity_val_steps=params.num_sanity_val_steps,
         devices=params.gpus,
         max_epochs=params.max_epochs,

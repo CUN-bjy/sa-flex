@@ -19,6 +19,7 @@ class SlotAttentionParams:
     gpus: int = 2
     max_epochs: int = 50
     reg_weight: float = 0.0
+    use_sparse_mask: bool = False
     num_sanity_val_steps: int = 1
     scheduler_gamma: float = 0.5
     weight_decay: float = 0.0

@@ -110,6 +110,7 @@ class SlotAttentionModel(nn.Module):
         decoder_resolution: Tuple[int, int] = (8, 8),
         reg_weight: float = 1e-2,
         empty_cache=False,
+        use_sparse_mask=False,
     ):
         super().__init__()
         self.resolution = resolution
@@ -123,6 +124,7 @@ class SlotAttentionModel(nn.Module):
         self.decoder_resolution = decoder_resolution
         self.out_features = self.hidden_dims[-1]
         self.reg_weight = reg_weight
+        self.use_sparse_mask = use_sparse_mask
 
         modules = []
         channels = self.in_channels
@@ -223,12 +225,13 @@ class SlotAttentionModel(nn.Module):
         # `slots` has shape: [batch_size, num_slots, slot_size].
         batch_size, num_slots, slot_size = slots.shape
         
-        # extract slot-wise sparse-mask
-        slots_ = slots.view(batch_size, -1)
-        slotwise_mask = F.relu(torch.sign(F.tanh(self.linear_to_mask(slots_))))
+        if self.use_sparse_mask:
+            # extract slot-wise sparse-mask
+            slots_ = slots.view(batch_size, -1)
+            slotwise_mask = F.relu(torch.sign(F.tanh(self.linear_to_mask(slots_))))
 
-        # slots with sparse-mask
-        slots = slots * slotwise_mask.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
+            # slots with sparse-mask
+            slots = slots * slotwise_mask.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
         
         slots = slots.view(batch_size * num_slots, slot_size, 1, 1)
         decoder_in = slots.repeat(1, 1, self.decoder_resolution[0], self.decoder_resolution[1])
