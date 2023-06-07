@@ -8,7 +8,7 @@ import numpy as np
 from slot_attention.model import SlotAttentionModel
 from slot_attention.params import SlotAttentionParams
 from slot_attention.utils import Tensor, to_rgb_from_tensor
-from slot_attention.utils import permute_dims, linear_annealing
+from slot_attention.utils import permute_dims, linear_annealing, warm_and_decay_annealing
 
 from slot_attention.evaluator import adjusted_rand_index
 from slot_attention.discriminator import Discriminator
@@ -48,10 +48,14 @@ class SlotAttentionMethod(pl.LightningModule):
         d_slots = self.discriminator(slots)
         tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
         
-        anneal_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
-        sa_loss = mse_loss + \
-            self.params.sparse_weight * sparse_loss + \
-            anneal_reg * self.params.tc_weight * tc_loss
+        if self.params.auto_sparse_weight:
+            sparse_weight = warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step, self.params.annealing_steps)
+        else:
+            sparse_weight = self.params.sparse_weight
+        anneal_tc_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
+        
+        sa_loss = mse_loss + sparse_weight * sparse_loss + \
+            anneal_tc_reg * self.params.tc_weight * tc_loss
 
         # backpropagate loss for slot attention
         opt_sa.zero_grad()
@@ -76,7 +80,7 @@ class SlotAttentionMethod(pl.LightningModule):
         sh_sa.step()
         opt_d.step()
         
-        logs = {"loss": sa_loss, "d_loss": d_loss}
+        logs = {"loss": sa_loss, "d_loss": d_loss, "sparse_weight": sparse_weight}
         self.log_dict(logs, sync_dist=True)
         
         self.global_training_step += 1        
@@ -131,10 +135,14 @@ class SlotAttentionMethod(pl.LightningModule):
         d_slots = self.discriminator(slots)
         tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
         
-        anneal_reg = 1
-        sa_loss = mse_loss + \
-            self.params.sparse_weight * sparse_loss + \
-            anneal_reg * self.params.tc_weight * tc_loss
+        if self.params.auto_sparse_weight:
+            sparse_weight = warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step, self.params.annealing_steps)
+        else:
+            sparse_weight = self.params.sparse_weight
+        anneal_tc_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
+        
+        sa_loss = mse_loss + sparse_weight * sparse_loss + \
+            anneal_tc_reg * self.params.tc_weight * tc_loss
         
         # Second Phase for updating discriminator
         _, _, _, slots = self.model.forward(batch_2)

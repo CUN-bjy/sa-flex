@@ -99,3 +99,15 @@ def linear_annealing(init, fin, step, annealing_steps):
     delta = fin - init
     annealed = min(init + delta * step / annealing_steps, fin)
     return annealed
+
+def warm_and_decay_annealing(init, fin, step, annealing_steps):
+    """Warm and Decay annealing of a parameter."""
+    if annealing_steps == 0:
+        return fin
+    assert fin > init
+    delta = fin - init
+    if step < annealing_steps: # warm-up
+        annealed = init + delta*(step / annealing_steps)
+    else: # decay
+        annealed = fin*(0.5**(step/(annealing_steps*10)))
+    return annealed

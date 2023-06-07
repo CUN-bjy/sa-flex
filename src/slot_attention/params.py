@@ -38,6 +38,7 @@ class SlotAttentionParams:
     use_sparse_mask: bool = False
     
     # objective parameters
+    auto_sparse_weight: bool = False
     sparse_weight: float = 0.0
     tc_weight: float = 0.0
     
