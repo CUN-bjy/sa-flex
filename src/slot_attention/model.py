@@ -256,6 +256,7 @@ class SlotAttentionModel(nn.Module):
         loss = mse_loss + self.reg_weight*sparse_loss
         return {
             "loss": loss,
+            # "d_loss": d_loss,
         }
 
 

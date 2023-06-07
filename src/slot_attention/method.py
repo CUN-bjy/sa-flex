@@ -20,18 +20,27 @@ class SlotAttentionMethod(pl.LightningModule):
         self.datamodule = datamodule
         self.params = params
         self.validation_step_outputs = []
+        self.automatic_optimization = False
 
     def forward(self, input: Tensor, **kwargs) -> Tensor:
         return self.model(input, **kwargs)
 
     def training_step(self, batch, batch_idx, optimizer_idx=0):
+        opt_sa = self.optimizers()
+        sh_sa = self.lr_schedulers()
+        opt_sa.zero_grad()
+        
         if self.params.clevr_with_mask:
             batch, gt_masks = batch["image"], batch["mask"]
         
         train_loss = self.model.loss_function(batch)
+        
+        self.manual_backward(train_loss["loss"])
+        opt_sa.step()
+        sh_sa.step()
+        
         logs = {key: val.item() for key, val in train_loss.items()}
         self.log_dict(logs, sync_dist=True)
-        return train_loss
 
     def sample_images(self):
         dl = self.datamodule.val_dataloader()
@@ -122,5 +131,5 @@ class SlotAttentionMethod(pl.LightningModule):
 
         return (
             [optimizer],
-            [{"scheduler": scheduler, "interval": "step",}],
+            [scheduler],
         )
