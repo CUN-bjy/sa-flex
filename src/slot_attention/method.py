@@ -7,10 +7,11 @@ import numpy as np
 
 from slot_attention.model import SlotAttentionModel
 from slot_attention.params import SlotAttentionParams
-from slot_attention.utils import Tensor
-from slot_attention.utils import to_rgb_from_tensor
+from slot_attention.utils import Tensor, to_rgb_from_tensor
+from slot_attention.utils import permute_dims, linear_annealing
 
 from slot_attention.evaluator import adjusted_rand_index
+from slot_attention.discriminator import Discriminator
 
 
 class SlotAttentionMethod(pl.LightningModule):
@@ -21,26 +22,62 @@ class SlotAttentionMethod(pl.LightningModule):
         self.params = params
         self.validation_step_outputs = []
         self.automatic_optimization = False
+        self.global_training_step = 0
+        
+        self.discriminator = Discriminator(latent_dim=self.params.slot_size)
 
     def forward(self, input: Tensor, **kwargs) -> Tensor:
         return self.model(input, **kwargs)
 
     def training_step(self, batch, batch_idx, optimizer_idx=0):
-        opt_sa = self.optimizers()
+        # preprocess for batch
+        if self.params.clevr_with_mask:
+            batch, _ = batch["image"], batch["mask"]
+        batch_1, batch_2 = batch.split(batch.size(0)//2)
+        
+        # init optimizers and schedulers
+        opt_sa, opt_d = self.optimizers()
         sh_sa = self.lr_schedulers()
         opt_sa.zero_grad()
+        opt_d.zero_grad()
         
-        if self.params.clevr_with_mask:
-            batch, gt_masks = batch["image"], batch["mask"]
+        # First Phase for updating slot encoder-decoder
+        recon_combined, _, _, slots = self.model.forward(batch_1)
+        mse_loss = F.mse_loss(recon_combined, batch_1)
+        sparse_loss = torch.mean(torch.abs(F.relu(slots)))
         
-        train_loss = self.model.loss_function(batch)
+        slots = slots.squeeze()
+        d_slots = self.discriminator(slots)
+        tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
         
-        self.manual_backward(train_loss["loss"])
+        anneal_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
+        sa_loss = mse_loss + \
+            self.params.sparse_weight * sparse_loss + \
+            anneal_reg * self.params.tc_weight * tc_loss
+
+        # backpropagate loss for slot attention
+        self.manual_backward(sa_loss, retain_graph=True)
         opt_sa.step()
         sh_sa.step()
         
-        logs = {key: val.item() for key, val in train_loss.items()}
+        # Second Phase for updating discriminator
+        _, _, _, slots = self.model.forward(batch_2)
+        slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
+        slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
+        d_slots_perm = self.discriminator(slots_perm)
+        
+        ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
+        zeros = torch.zeros_like(ones)
+        d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
+        
+        # backpropagate loss for discriminator
+        self.manual_backward(d_loss)
+        opt_d.step()
+        
+        logs = {"loss": sa_loss, "d_loss": d_loss}
         self.log_dict(logs, sync_dist=True)
+        
+        self.global_training_step += 1
 
     def sample_images(self):
         dl = self.datamodule.val_dataloader()
@@ -76,33 +113,59 @@ class SlotAttentionMethod(pl.LightningModule):
         return images
 
     def validation_step(self, batch, batch_idx, optimizer_idx=0):
+        # preprocess for batch
         if self.params.clevr_with_mask:
             batch, gt_masks = batch["image"], batch["mask"]
+        batch_1, batch_2 = batch.split(batch.size(0)//2)
+        gt_masks_1, gt_masks_2 = gt_masks.split(batch.size(0)//2)
         
-        recon_combined, recons, masks, slots = self.model.forward(batch)
+        # First Phase for updating slot encoder-decoder
+        recon_combined, _, masks, slots = self.model.forward(batch_1)
         
-        mse_loss = F.mse_loss(recon_combined, batch)
+        mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
-        val_loss = mse_loss + self.params.reg_weight * sparse_loss
+        
+        slots = slots.squeeze()
+        d_slots = self.discriminator(slots)
+        tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
+        
+        anneal_reg = 1
+        sa_loss = mse_loss + \
+            self.params.sparse_weight * sparse_loss + \
+            anneal_reg * self.params.tc_weight * tc_loss
+        
+        # Second Phase for updating discriminator
+        _, _, _, slots = self.model.forward(batch_2)
+        slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
+        slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
+        d_slots_perm = self.discriminator(slots_perm)
+        
+        ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
+        zeros = torch.zeros_like(ones)
+        d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
         
         if self.params.clevr_with_mask:    
-            ari = adjusted_rand_index(gt_masks, masks, exclude_background=False).mean()
-            fgari = adjusted_rand_index(gt_masks, masks).mean()
-            self.validation_step_outputs.append({"loss": val_loss.item(), "sparse_loss": sparse_loss.item(), "mse_loss": mse_loss.item(), "ARI": ari.item(), "FG-ARI": fgari.item()})
+            ari = adjusted_rand_index(gt_masks_1, masks, exclude_background=False).mean()
+            fgari = adjusted_rand_index(gt_masks_1, masks).mean()
+            self.validation_step_outputs.append({"loss": sa_loss.item(), "sparse_loss": sparse_loss.item(), "mse_loss": mse_loss.item(), "tc_loss": tc_loss.item(), "d_loss": d_loss.item(), "ARI": ari.item(), "FG-ARI": fgari.item()})
         else:
-            self.validation_step_outputs.append({"loss": val_loss.item(), "sparse_loss": sparse_loss.item(), "mse_loss": mse_loss.item(),})
-        return val_loss
+            self.validation_step_outputs.append({"loss": sa_loss.item(), "sparse_loss": sparse_loss.item(), "mse_loss": mse_loss.item(), "tc_loss": tc_loss.item(), "d_loss": d_loss.item(),})
+
 
     def on_validation_epoch_end(self):
         avg_loss = np.array([x["loss"] for x in self.validation_step_outputs]).mean()
+        avg_d_loss = np.array([x["d_loss"] for x in self.validation_step_outputs]).mean()
         avg_sparse_loss = np.array([x["sparse_loss"] for x in self.validation_step_outputs]).mean()
         avg_mse_loss = np.array([x["mse_loss"] for x in self.validation_step_outputs]).mean()
+        avg_tc_loss = np.array([x["tc_loss"] for x in self.validation_step_outputs]).mean()
         avg_ari = np.array([x["ARI"] for x in self.validation_step_outputs]).mean()
         avg_fgari = np.array([x["FG-ARI"] for x in self.validation_step_outputs]).mean()
         logs = {
             "avg_val_loss": avg_loss,
+            "avg_d_loss": avg_d_loss,
             "avg_sparse_loss": avg_sparse_loss,
             "avg_mse_loss": avg_mse_loss,
+            "avg_tc_loss": avg_tc_loss,
             "avg_ari": avg_ari,
             "avr_fgari": avg_fgari,
         }
@@ -110,7 +173,8 @@ class SlotAttentionMethod(pl.LightningModule):
         print("; ".join([f"{k}: {v:.6f}" for k, v in logs.items()]))
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.model.parameters(), lr=self.params.lr, weight_decay=self.params.weight_decay)
+        optimizer_SA = optim.Adam(self.model.parameters(), lr=self.params.lr, weight_decay=self.params.weight_decay)
+        optimizer_D = optim.Adam(self.discriminator.parameters(), lr=self.params.lr_d, betas=(0.5,0.9))
 
         warmup_steps_pct = self.params.warmup_steps_pct
         decay_steps_pct = self.params.decay_steps_pct
@@ -127,9 +191,10 @@ class SlotAttentionMethod(pl.LightningModule):
             factor *= self.params.scheduler_gamma ** (step / decay_steps)
             return factor
 
-        scheduler = optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=warm_and_decay_lr_scheduler)
+        scheduler_SA = optim.lr_scheduler.LambdaLR(optimizer=optimizer_SA, lr_lambda=warm_and_decay_lr_scheduler)
+        # scheduler_D = optim.lr_scheduler.LambdaLR(optimizer=optimizer_D, lr_lambda=warm_and_decay_lr_scheduler)
 
         return (
-            [optimizer],
-            [scheduler],
+            [optimizer_SA, optimizer_D],
+            [scheduler_SA],
         )

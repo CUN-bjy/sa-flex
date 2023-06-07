@@ -95,9 +95,9 @@ def main(params: Optional[SlotAttentionParams] = None):
     model = SlotAttentionModel(
         resolution=params.resolution,
         num_slots=params.num_slots,
+        slot_size=params.slot_size,
         num_iterations=params.num_iterations,
         empty_cache=params.empty_cache,
-        reg_weight=params.reg_weight,
         use_sparse_mask=params.use_sparse_mask,
     )
 

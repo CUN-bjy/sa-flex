@@ -108,7 +108,6 @@ class SlotAttentionModel(nn.Module):
         slot_size: int = 64,
         hidden_dims: Tuple[int, ...] = (64, 64, 64, 64),
         decoder_resolution: Tuple[int, int] = (8, 8),
-        reg_weight: float = 1e-2,
         empty_cache=False,
         use_sparse_mask=False,
     ):
@@ -123,7 +122,6 @@ class SlotAttentionModel(nn.Module):
         self.hidden_dims = hidden_dims
         self.decoder_resolution = decoder_resolution
         self.out_features = self.hidden_dims[-1]
-        self.reg_weight = reg_weight
         self.use_sparse_mask = use_sparse_mask
 
         modules = []
@@ -248,16 +246,6 @@ class SlotAttentionModel(nn.Module):
         masks = F.softmax(masks, dim=1)
         recon_combined = torch.sum(recons * masks, dim=1)
         return recon_combined, recons, masks, slots
-
-    def loss_function(self, input):
-        recon_combined, recons, masks, slots = self.forward(input)
-        mse_loss = F.mse_loss(recon_combined, input)
-        sparse_loss = torch.mean(torch.abs(F.relu(slots)))
-        loss = mse_loss + self.reg_weight*sparse_loss
-        return {
-            "loss": loss,
-            # "d_loss": d_loss,
-        }
 
 
 class SoftPositionEmbed(nn.Module):
