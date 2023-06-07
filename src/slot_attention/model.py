@@ -152,7 +152,8 @@ class SlotAttentionModel(nn.Module):
             nn.Linear(self.out_features, self.out_features),
         )
         
-        self.linear_to_mask = nn.Linear(num_slots * slot_size, num_slots)
+        if self.use_sparse_mask:
+            self.linear_to_mask = nn.Linear(num_slots * slot_size, num_slots)
 
         # Build Decoder
         modules = []
@@ -228,7 +229,7 @@ class SlotAttentionModel(nn.Module):
         if self.use_sparse_mask:
             # extract slot-wise sparse-mask
             slots_ = slots.view(batch_size, -1)
-            slotwise_mask = F.relu(torch.sign(F.tanh(self.linear_to_mask(slots_))))
+            slotwise_mask = F.relu(F.hardtanh(self.linear_to_mask(slots_)))
 
             # slots with sparse-mask
             slots = slots * slotwise_mask.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)

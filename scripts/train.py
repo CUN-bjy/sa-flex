@@ -114,7 +114,6 @@ def main(params: Optional[SlotAttentionParams] = None):
     trainer = Trainer(
         logger=logger if params.is_logger_enabled else False,
         accelerator="cuda",
-        # strategy="auto",
         strategy="ddp" if params.gpus > 1 else "auto",
         num_sanity_val_steps=params.num_sanity_val_steps,
         devices=params.gpus,
