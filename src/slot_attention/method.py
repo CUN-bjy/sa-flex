@@ -38,8 +38,6 @@ class SlotAttentionMethod(pl.LightningModule):
         # init optimizers and schedulers
         opt_sa, opt_d = self.optimizers()
         sh_sa = self.lr_schedulers()
-        opt_sa.zero_grad()
-        opt_d.zero_grad()
         
         # First Phase for updating slot encoder-decoder
         recon_combined, _, _, slots = self.model.forward(batch_1)
@@ -56,9 +54,8 @@ class SlotAttentionMethod(pl.LightningModule):
             anneal_reg * self.params.tc_weight * tc_loss
 
         # backpropagate loss for slot attention
+        opt_sa.zero_grad()
         self.manual_backward(sa_loss, retain_graph=True)
-        opt_sa.step()
-        sh_sa.step()
         
         # Second Phase for updating discriminator
         _, _, _, slots = self.model.forward(batch_2)
@@ -67,17 +64,22 @@ class SlotAttentionMethod(pl.LightningModule):
         d_slots_perm = self.discriminator(slots_perm)
         
         ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
-        zeros = torch.zeros_like(ones)
+        zeros = torch.zeros_like(ones, device=batch_2.device)
         d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
         
         # backpropagate loss for discriminator
+        opt_d.zero_grad()
         self.manual_backward(d_loss)
+        
+        # update all parameters
+        opt_sa.step()
+        sh_sa.step()
         opt_d.step()
         
         logs = {"loss": sa_loss, "d_loss": d_loss}
         self.log_dict(logs, sync_dist=True)
         
-        self.global_training_step += 1
+        self.global_training_step += 1        
 
     def sample_images(self):
         dl = self.datamodule.val_dataloader()

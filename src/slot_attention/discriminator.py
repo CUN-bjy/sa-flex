@@ -92,7 +92,6 @@ class Discriminator(nn.Module):
 
         # Activation parameters
         self.neg_slope = neg_slope
-        self.leaky_relu = nn.LeakyReLU(self.neg_slope, True)
 
         # Layer parameters
         self.z_dim = latent_dim
@@ -101,23 +100,22 @@ class Discriminator(nn.Module):
         out_units = 2
 
         # Fully connected layers
-        self.lin1 = nn.Linear(self.z_dim, hidden_units)
-        self.lin2 = nn.Linear(hidden_units, hidden_units)
-        self.lin3 = nn.Linear(hidden_units, hidden_units)
-        self.lin4 = nn.Linear(hidden_units, hidden_units)
-        self.lin5 = nn.Linear(hidden_units, out_units)
-
+        self.mlp_d = nn.Sequential(
+            nn.Linear(self.z_dim, hidden_units),
+            nn.LeakyReLU(self.neg_slope, True),
+            nn.Linear(hidden_units, hidden_units),
+            nn.LeakyReLU(self.neg_slope, True),
+            nn.Linear(hidden_units, hidden_units),
+            nn.LeakyReLU(self.neg_slope, True),
+            nn.Linear(hidden_units, hidden_units),
+            nn.LeakyReLU(self.neg_slope, True),
+            nn.Linear(hidden_units, out_units)
+        )
+        
         self.reset_parameters()
 
     def forward(self, z):
-        # Fully connected layers with leaky ReLu activations
-        z = self.leaky_relu(self.lin1(z))
-        z = self.leaky_relu(self.lin2(z))
-        z = self.leaky_relu(self.lin3(z))
-        z = self.leaky_relu(self.lin4(z))
-        z = self.lin5(z)
-
-        return z
+        return self.mlp_d(z)
 
     def reset_parameters(self):
         self.apply(weights_init)

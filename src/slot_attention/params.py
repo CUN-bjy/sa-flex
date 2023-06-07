@@ -13,9 +13,10 @@ class SlotAttentionParams:
     clevr_with_mask: bool = True
     gpus: int = 2
     num_workers: int = 8
+    n_samples: int = 5
     
     # training parameters
-    max_epochs: int = 50
+    max_epochs: int = 70
     lr: float = 0.0004
     lr_d: float = 0.00005
     annealing_steps: int = 10000
@@ -25,7 +26,7 @@ class SlotAttentionParams:
     decay_steps_pct: float = 0.2
 
     batch_size: int = 20
-    val_batch_size: int = 10
+    val_batch_size: int = 20
     num_train_images: Optional[int] = None
     num_val_images: Optional[int] = None
     
