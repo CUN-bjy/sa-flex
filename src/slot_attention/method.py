@@ -44,9 +44,10 @@ class SlotAttentionMethod(pl.LightningModule):
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
         
-        slots = slots.squeeze()
-        d_slots = self.discriminator(slots)
-        tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
+        # slots = slots.squeeze()
+        # d_slots = self.discriminator(slots)
+        # tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
+        tc_loss = mse_loss
         
         if self.params.auto_sparse_weight:
             sparse_weight = warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step, self.params.annealing_steps)
@@ -61,24 +62,25 @@ class SlotAttentionMethod(pl.LightningModule):
         opt_sa.zero_grad()
         self.manual_backward(sa_loss, retain_graph=True)
         
-        # Second Phase for updating discriminator
-        _, _, _, slots = self.model.forward(batch_2)
-        slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
-        slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
-        d_slots_perm = self.discriminator(slots_perm)
+        # # Second Phase for updating discriminator
+        # _, _, _, slots = self.model.forward(batch_2)
+        # slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
+        # slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
+        # d_slots_perm = self.discriminator(slots_perm)
         
-        ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
-        zeros = torch.zeros_like(ones, device=batch_2.device)
-        d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
+        # ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
+        # zeros = torch.zeros_like(ones, device=batch_2.device)
+        # d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
+        d_loss = sa_loss
         
-        # backpropagate loss for discriminator
-        opt_d.zero_grad()
-        self.manual_backward(d_loss)
+        # # backpropagate loss for discriminator
+        # opt_d.zero_grad()
+        # self.manual_backward(d_loss)
         
         # update all parameters
         opt_sa.step()
         sh_sa.step()
-        opt_d.step()
+        # opt_d.step()
         
         logs = {"loss": sa_loss, "d_loss": d_loss, "sparse_weight": sparse_weight}
         self.log_dict(logs, sync_dist=True)
@@ -105,6 +107,7 @@ class SlotAttentionMethod(pl.LightningModule):
                 [
                     batch.unsqueeze(1),  # original images
                     recon_combined.unsqueeze(1),  # reconstructions
+                    recons, # raw reconstructions
                     recons * masks + (1 - masks),  # each slot
                 ],
                 dim=1,
@@ -131,9 +134,10 @@ class SlotAttentionMethod(pl.LightningModule):
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
         
-        slots = slots.squeeze()
-        d_slots = self.discriminator(slots)
-        tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
+        # slots = slots.squeeze()
+        # d_slots = self.discriminator(slots)
+        # tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
+        tc_loss = mse_loss
         
         if self.params.auto_sparse_weight:
             sparse_weight = warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step, self.params.annealing_steps)
@@ -145,14 +149,15 @@ class SlotAttentionMethod(pl.LightningModule):
             anneal_tc_reg * self.params.tc_weight * tc_loss
         
         # Second Phase for updating discriminator
-        _, _, _, slots = self.model.forward(batch_2)
-        slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
-        slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
-        d_slots_perm = self.discriminator(slots_perm)
+        # _, _, _, slots = self.model.forward(batch_2)
+        # slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
+        # slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
+        # d_slots_perm = self.discriminator(slots_perm)
         
-        ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
-        zeros = torch.zeros_like(ones)
-        d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
+        # ones = torch.ones(batch_2.size(0)*self.params.num_slots, dtype=torch.long, device=batch_2.device)
+        # zeros = torch.zeros_like(ones)
+        # d_loss = 0.5*(F.cross_entropy(d_slots, zeros) + F.cross_entropy(d_slots_perm, ones))
+        d_loss = sa_loss
         
         if self.params.clevr_with_mask:    
             ari = adjusted_rand_index(gt_masks_1, masks, exclude_background=False).mean()

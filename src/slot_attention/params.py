@@ -19,7 +19,7 @@ class SlotAttentionParams:
     max_epochs: int = 70
     lr: float = 0.0004
     lr_d: float = 0.00005
-    annealing_steps: int = 10000
+    annealing_steps: int = 100000
     scheduler_gamma: float = 0.5
     weight_decay: float = 0.0
     warmup_steps_pct: float = 0.02
