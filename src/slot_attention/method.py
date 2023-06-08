@@ -40,7 +40,7 @@ class SlotAttentionMethod(pl.LightningModule):
         sh_sa = self.lr_schedulers()
         
         # First Phase for updating slot encoder-decoder
-        recon_combined, _, _, slots = self.model.forward(batch_1)
+        recon_combined, _, _, slots, _ = self.model.forward(batch_1)
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
         
@@ -63,7 +63,7 @@ class SlotAttentionMethod(pl.LightningModule):
         self.manual_backward(sa_loss, retain_graph=True)
         
         # # Second Phase for updating discriminator
-        # _, _, _, slots = self.model.forward(batch_2)
+        # _, _, _, slots, _ = self.model.forward(batch_2)
         # slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
         # slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
         # d_slots_perm = self.discriminator(slots_perm)
@@ -99,15 +99,16 @@ class SlotAttentionMethod(pl.LightningModule):
         if self.params.gpus > 0:
             batch = batch.to(self.device)
 
-        recon_combined, recons, masks, slots = self.model.forward(batch)
-
+        recon_combined, recons, masks, slots, slot_masks = self.model.forward(batch)
+        if self.params.use_sparse_mask:
+            slot_masks = ~slot_masks.eq(0).view(*slot_masks.size(), 1, 1, 1).repeat(1,1,*recons.size()[-3:])
         # combine images in a nice way so we can display all outputs in one grid, output rescaled to be between 0 and 1
         out = to_rgb_from_tensor(
             torch.cat(
                 [
                     batch.unsqueeze(1),  # original images
                     recon_combined.unsqueeze(1),  # reconstructions
-                    recons, # raw reconstructions
+                    recons * slot_masks + recons * (~slot_masks) * 0.15 if self.params.use_sparse_mask else recons, # raw reconstructions
                     recons * masks + (1 - masks),  # each slot
                 ],
                 dim=1,
@@ -129,7 +130,7 @@ class SlotAttentionMethod(pl.LightningModule):
         gt_masks_1, gt_masks_2 = gt_masks.split(batch.size(0)//2)
         
         # First Phase for updating slot encoder-decoder
-        recon_combined, _, masks, slots = self.model.forward(batch_1)
+        recon_combined, _, masks, slots, _ = self.model.forward(batch_1)
         
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))

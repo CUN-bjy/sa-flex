@@ -227,10 +227,10 @@ class SlotAttentionModel(nn.Module):
         if self.use_sparse_mask:
             # extract slot-wise sparse-mask
             slots_ = slots.view(batch_size, -1)
-            slotwise_mask = F.relu(F.hardtanh(self.linear_to_mask(slots_)))
+            slotwise_masks = F.relu(F.hardtanh(self.linear_to_mask(slots_)))
 
             # slots with sparse-mask
-            slots = slots * slotwise_mask.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
+            slots = slots * slotwise_masks.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
         
         slots = slots.view(batch_size * num_slots, slot_size, 1, 1)
         decoder_in = slots.repeat(1, 1, self.decoder_resolution[0], self.decoder_resolution[1])
@@ -245,7 +245,7 @@ class SlotAttentionModel(nn.Module):
         masks = out[:, :, -1:, :, :]
         masks = F.softmax(masks, dim=1)
         recon_combined = torch.sum(recons * masks, dim=1)
-        return recon_combined, recons, masks, slots
+        return recon_combined, recons, masks, slots, slotwise_masks if self.use_sparse_mask else None
 
 
 class SoftPositionEmbed(nn.Module):
