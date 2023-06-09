@@ -29,8 +29,6 @@ class SlotAttentionMethod(pl.LightningModule):
         # steps
         self.total_steps = self.params.max_epochs * len(self.datamodule.train_dataloader())
         self.wakeup_sparse_steps = self.total_steps * self.params.wakeup_sparse_mask_pct
-        self.global_training_step = 0
-        
         self.automatic_optimization = False
 
     def forward(self, input: Tensor, **kwargs) -> Tensor:
@@ -47,7 +45,7 @@ class SlotAttentionMethod(pl.LightningModule):
         sh_sa = self.lr_schedulers()
         
         # lazy wakeup to activate sparse mask
-        self.activate_mask = True if self.global_training_step > self.wakeup_sparse_steps else False
+        self.activate_mask = True if self.global_step > self.wakeup_sparse_steps else False
         
         # First Phase for updating slot encoder-decoder
         recon_combined, _, _, slots, _ = self.model.forward(batch_1, self.activate_mask)
@@ -61,10 +59,10 @@ class SlotAttentionMethod(pl.LightningModule):
         
         if self.activate_mask:
             sparse_weight = self.params.sparse_weight if not self.params.auto_sparse_weight \
-                else warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step - self.wakeup_sparse_steps, self.params.annealing_steps)
+                else warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_step - self.wakeup_sparse_steps, self.params.annealing_steps)
         else:
             sparse_weight = 0.0
-        anneal_tc_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
+        anneal_tc_reg = linear_annealing(0, 1, self.global_step, self.params.annealing_steps)
         
         sa_loss = mse_loss + sparse_weight * sparse_loss + \
             anneal_tc_reg * self.params.tc_weight * tc_loss
@@ -95,8 +93,6 @@ class SlotAttentionMethod(pl.LightningModule):
         
         logs = {"loss": sa_loss, "d_loss": d_loss, "sparse_weight": sparse_weight, "activate_mask": self.activate_mask}
         self.log_dict(logs, sync_dist=True)
-        
-        self.global_training_step += 1        
 
     def sample_images(self):
         dl = self.datamodule.val_dataloader()
@@ -159,10 +155,10 @@ class SlotAttentionMethod(pl.LightningModule):
         
         if self.activate_mask:
             sparse_weight = self.params.sparse_weight if not self.params.auto_sparse_weight \
-                else warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step - self.wakeup_sparse_steps, self.params.annealing_steps)
+                else warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_step - self.wakeup_sparse_steps, self.params.annealing_steps)
         else:
             sparse_weight = 0.0
-        anneal_tc_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
+        anneal_tc_reg = linear_annealing(0, 1, self.global_step, self.params.annealing_steps)
         
         sa_loss = mse_loss + sparse_weight * sparse_loss + \
             anneal_tc_reg * self.params.tc_weight * tc_loss
