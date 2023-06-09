@@ -154,7 +154,11 @@ class SlotAttentionModel(nn.Module):
         )
         
         if self.use_sparse_mask:
-            self.linear_to_mask = nn.Linear(num_slots * slot_size, num_slots)
+            self.linear_to_mask = nn.Sequential(
+                nn.Linear(num_slots * slot_size, 128),
+                nn.LeakyReLU(),
+                nn.Linear(128, num_slots),
+            )
 
         # Build Decoder
         modules = []
