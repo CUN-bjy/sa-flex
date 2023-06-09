@@ -100,15 +100,21 @@ class SlotAttentionMethod(pl.LightningModule):
             batch = batch.to(self.device)
 
         recon_combined, recons, masks, slots, slot_masks = self.model.forward(batch)
+        recons_vis = torch.zeros_like(recons)
         if self.params.use_sparse_mask:
-            slot_masks = ~slot_masks.eq(0).view(*slot_masks.size(), 1, 1, 1).repeat(1,1,*recons.size()[-3:])
+            slot_masks = ~slot_masks.eq(0).view(*slot_masks.size(), 1, 1).repeat(1,1, *recons.size()[-2:])
+            recons_vis[:,:,0] = recons[:,:,0] * (slot_masks + ~slot_masks)
+            recons_vis[:,:,1] = recons[:,:,1] * (slot_masks + ~slot_masks*0.1)
+            recons_vis[:,:,2] = recons[:,:,2] * (slot_masks + ~slot_masks*0.1)
+        else:
+            recons_vis = recons
         # combine images in a nice way so we can display all outputs in one grid, output rescaled to be between 0 and 1
         out = to_rgb_from_tensor(
             torch.cat(
                 [
                     batch.unsqueeze(1),  # original images
                     recon_combined.unsqueeze(1),  # reconstructions
-                    recons * slot_masks + recons * (~slot_masks) * 0.15 if self.params.use_sparse_mask else recons, # raw reconstructions
+                    recons_vis,# raw reconstructions
                     recons * masks + (1 - masks),  # each slot
                 ],
                 dim=1,
