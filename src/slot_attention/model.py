@@ -8,6 +8,7 @@ from slot_attention.utils import Tensor
 from slot_attention.utils import assert_shape
 from slot_attention.utils import build_grid
 from slot_attention.utils import conv_transpose_out_shape
+from slot_attention.utils import StraightThroughEstimator
 
 
 class SlotAttention(nn.Module):
@@ -123,7 +124,9 @@ class SlotAttentionModel(nn.Module):
         self.decoder_resolution = decoder_resolution
         self.out_features = self.hidden_dims[-1]
         self.use_sparse_mask = use_sparse_mask
-
+        
+        self.ste = StraightThroughEstimator()
+        
         modules = []
         channels = self.in_channels
         # Build Encoder
@@ -227,7 +230,7 @@ class SlotAttentionModel(nn.Module):
         if self.use_sparse_mask:
             # extract slot-wise sparse-mask
             slots_ = slots.view(batch_size, -1)
-            slotwise_masks = F.relu(F.hardtanh(self.linear_to_mask(slots_)))
+            slotwise_masks = self.ste(self.linear_to_mask(slots_))
 
             # slots with sparse-mask
             slots = slots * slotwise_masks.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)

@@ -5,6 +5,8 @@ from typing import Union
 
 import torch
 from pytorch_lightning import Callback
+import torch.autograd as autograd
+from torch.nn import functional as F
 
 import wandb
 
@@ -111,3 +113,18 @@ def warm_and_decay_annealing(init, fin, step, annealing_steps):
     else: # decay
         annealed = fin*(0.5**(step/(annealing_steps*10)))
     return annealed
+
+class STEFunction(autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        return (input > 0).float()
+    @staticmethod
+    def backward(ctx, grad_output):
+        return F.hardtanh(grad_output)
+    
+class StraightThroughEstimator(torch.nn.Module):
+    def __init__(self):
+        super(StraightThroughEstimator, self).__init__()
+    def forward(self, x):
+        x = STEFunction.apply(x)
+        return x
