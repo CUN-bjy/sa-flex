@@ -17,14 +17,21 @@ from slot_attention.discriminator import Discriminator
 class SlotAttentionMethod(pl.LightningModule):
     def __init__(self, model: SlotAttentionModel, datamodule: pl.LightningDataModule, params: SlotAttentionParams):
         super().__init__()
-        self.model = model
         self.datamodule = datamodule
         self.params = params
         self.validation_step_outputs = []
-        self.automatic_optimization = False
+        self.activate_mask = False
+        
+        # main modules
+        self.model = model
+        self.discriminator = Discriminator(latent_dim=self.params.slot_size)
+
+        # steps
+        self.total_steps = self.params.max_epochs * len(self.datamodule.train_dataloader())
+        self.wakeup_sparse_steps = self.total_steps * self.params.wakeup_sparse_mask_pct
         self.global_training_step = 0
         
-        self.discriminator = Discriminator(latent_dim=self.params.slot_size)
+        self.automatic_optimization = False
 
     def forward(self, input: Tensor, **kwargs) -> Tensor:
         return self.model(input, **kwargs)
@@ -39,8 +46,11 @@ class SlotAttentionMethod(pl.LightningModule):
         opt_sa, opt_d = self.optimizers()
         sh_sa = self.lr_schedulers()
         
+        # lazy wakeup to activate sparse mask
+        self.activate_mask = True if self.global_training_step > self.wakeup_sparse_steps else False
+        
         # First Phase for updating slot encoder-decoder
-        recon_combined, _, _, slots, _ = self.model.forward(batch_1)
+        recon_combined, _, _, slots, _ = self.model.forward(batch_1, self.activate_mask)
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
         
@@ -49,10 +59,11 @@ class SlotAttentionMethod(pl.LightningModule):
         # tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
         tc_loss = mse_loss
         
-        if self.params.auto_sparse_weight:
-            sparse_weight = warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step, self.params.annealing_steps)
+        if self.activate_mask:
+            sparse_weight = self.params.sparse_weight if not self.params.auto_sparse_weight \
+                else warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step - self.wakeup_sparse_steps, self.params.annealing_steps)
         else:
-            sparse_weight = self.params.sparse_weight
+            sparse_weight = 0.0
         anneal_tc_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
         
         sa_loss = mse_loss + sparse_weight * sparse_loss + \
@@ -63,7 +74,7 @@ class SlotAttentionMethod(pl.LightningModule):
         self.manual_backward(sa_loss, retain_graph=True)
         
         # # Second Phase for updating discriminator
-        # _, _, _, slots, _ = self.model.forward(batch_2)
+        # _, _, _, slots, _ = self.model.forward(batch_2, self.activate_mask)
         # slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
         # slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
         # d_slots_perm = self.discriminator(slots_perm)
@@ -82,7 +93,7 @@ class SlotAttentionMethod(pl.LightningModule):
         sh_sa.step()
         # opt_d.step()
         
-        logs = {"loss": sa_loss, "d_loss": d_loss, "sparse_weight": sparse_weight}
+        logs = {"loss": sa_loss, "d_loss": d_loss, "sparse_weight": sparse_weight, "activate_mask": self.activate_mask}
         self.log_dict(logs, sync_dist=True)
         
         self.global_training_step += 1        
@@ -99,9 +110,9 @@ class SlotAttentionMethod(pl.LightningModule):
         if self.params.gpus > 0:
             batch = batch.to(self.device)
 
-        recon_combined, recons, masks, slots, slot_masks = self.model.forward(batch)
+        recon_combined, recons, masks, _, slot_masks = self.model.forward(batch, self.activate_mask)
         recons_vis = torch.zeros_like(recons)
-        if self.params.use_sparse_mask:
+        if slot_masks != None:
             slot_masks = ~slot_masks.eq(0).view(*slot_masks.size(), 1, 1).repeat(1,1, *recons.size()[-2:])
             recons_vis[:,:,0] = recons[:,:,0] * (slot_masks + ~slot_masks)
             recons_vis[:,:,1] = recons[:,:,1] * (slot_masks + ~slot_masks*0.1)
@@ -136,7 +147,7 @@ class SlotAttentionMethod(pl.LightningModule):
         gt_masks_1, gt_masks_2 = gt_masks.split(batch.size(0)//2)
         
         # First Phase for updating slot encoder-decoder
-        recon_combined, _, masks, slots, _ = self.model.forward(batch_1)
+        recon_combined, _, masks, slots, _ = self.model.forward(batch_1, self.activate_mask)
         
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
@@ -146,17 +157,18 @@ class SlotAttentionMethod(pl.LightningModule):
         # tc_loss = (d_slots[:, 0] - d_slots[:, 1]).mean()
         tc_loss = mse_loss
         
-        if self.params.auto_sparse_weight:
-            sparse_weight = warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step, self.params.annealing_steps)
+        if self.activate_mask:
+            sparse_weight = self.params.sparse_weight if not self.params.auto_sparse_weight \
+                else warm_and_decay_annealing(0.001, self.params.sparse_weight, self.global_training_step - self.wakeup_sparse_steps, self.params.annealing_steps)
         else:
-            sparse_weight = self.params.sparse_weight
+            sparse_weight = 0.0
         anneal_tc_reg = linear_annealing(0, 1, self.global_training_step, self.params.annealing_steps)
         
         sa_loss = mse_loss + sparse_weight * sparse_loss + \
             anneal_tc_reg * self.params.tc_weight * tc_loss
         
         # Second Phase for updating discriminator
-        # _, _, _, slots = self.model.forward(batch_2)
+        # _, _, _, slots = self.model.forward(batch_2, self.activate_mask)
         # slots = slots.view(batch_2.size(0), self.params.num_slots, -1)
         # slots_perm = permute_dims(slots).view(batch_2.size(0)*self.params.num_slots, -1).detach()
         # d_slots_perm = self.discriminator(slots_perm)

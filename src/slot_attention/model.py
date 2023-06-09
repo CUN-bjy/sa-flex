@@ -111,6 +111,7 @@ class SlotAttentionModel(nn.Module):
         decoder_resolution: Tuple[int, int] = (8, 8),
         empty_cache=False,
         use_sparse_mask=False,
+        hidden_mask_layer=512,
     ):
         super().__init__()
         self.resolution = resolution
@@ -124,6 +125,7 @@ class SlotAttentionModel(nn.Module):
         self.decoder_resolution = decoder_resolution
         self.out_features = self.hidden_dims[-1]
         self.use_sparse_mask = use_sparse_mask
+        self.hidden_mask_layer = hidden_mask_layer
         
         self.ste = StraightThroughEstimator()
         
@@ -155,9 +157,9 @@ class SlotAttentionModel(nn.Module):
         
         if self.use_sparse_mask:
             self.linear_to_mask = nn.Sequential(
-                nn.Linear(num_slots * slot_size, 128),
+                nn.Linear(num_slots * slot_size, self.hidden_mask_layer),
                 nn.LeakyReLU(),
-                nn.Linear(128, num_slots),
+                nn.Linear(self.hidden_mask_layer, num_slots),
             )
 
         # Build Decoder
@@ -212,7 +214,7 @@ class SlotAttentionModel(nn.Module):
             mlp_hidden_size=128,
         )
 
-    def forward(self, x):
+    def forward(self, x, activate_mask=False):
         if self.empty_cache:
             torch.cuda.empty_cache()
 
@@ -231,7 +233,7 @@ class SlotAttentionModel(nn.Module):
         # `slots` has shape: [batch_size, num_slots, slot_size].
         batch_size, num_slots, slot_size = slots.shape
         
-        if self.use_sparse_mask:
+        if activate_mask:
             # extract slot-wise sparse-mask
             slots_ = slots.view(batch_size, -1)
             slotwise_masks = self.ste(self.linear_to_mask(slots_))
@@ -252,7 +254,7 @@ class SlotAttentionModel(nn.Module):
         masks = out[:, :, -1:, :, :]
         masks = F.softmax(masks, dim=1)
         recon_combined = torch.sum(recons * masks, dim=1)
-        return recon_combined, recons, masks, slots, slotwise_masks if self.use_sparse_mask else None
+        return recon_combined, recons, masks, slots, slotwise_masks if activate_mask else None
 
 
 class SoftPositionEmbed(nn.Module):

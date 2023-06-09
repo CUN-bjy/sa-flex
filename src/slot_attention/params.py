@@ -36,8 +36,10 @@ class SlotAttentionParams:
     slot_size: int = 64
     num_iterations: int = 3
     use_sparse_mask: bool = False
+    hidden_mask_layer: int = 512
     
     # objective parameters
+    wakeup_sparse_mask_pct: float = 0.5
     auto_sparse_weight: bool = False
     sparse_weight: float = 0.0
     tc_weight: float = 0.0
