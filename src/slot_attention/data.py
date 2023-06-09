@@ -79,13 +79,15 @@ class CLEVRwithMaskDataModule(pl.LightningDataModule):
         self.val_batch_size = val_batch_size
         self.clevr_transforms = clevr_transforms
         self.num_workers = num_workers
-        self.num_train_images = num_train_images
-        self.num_val_images = num_val_images
+        self.num_train_images = num_train_images if not num_train_images == None else 90000
+        self.num_val_images = num_val_images if not num_val_images == None else 5000
 
         self.train_dataset = ClevrWithMasks(
             root=self.data_root, 
             split='Train', 
-            ttv=[90000, 5000, 5000], 
+            ttv=[min(90000, self.num_train_images), 
+                 min(5000, self.num_val_images), 
+                 min(5000, self.num_val_images)], 
             transforms=self.clevr_transforms,
             download=True, 
             convert=True
@@ -93,7 +95,9 @@ class CLEVRwithMaskDataModule(pl.LightningDataModule):
         self.val_dataset = ClevrWithMasks(
             root=self.data_root, 
             split='Val', 
-            ttv=[90000, 5000, 5000], 
+            ttv=[min(90000, self.num_train_images), 
+                 min(5000, self.num_val_images), 
+                 min(5000, self.num_val_images)], 
             transforms=self.clevr_transforms,
             download=True, 
             convert=True
