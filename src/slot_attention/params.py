@@ -48,4 +48,7 @@ class SlotAttentionParams:
     empty_cache: bool = True
     is_logger_enabled: bool = True
     is_verbose: bool = True
+    
+    # pretrain
     ckp_path: str = ""
+    freeze_encoder: bool = False

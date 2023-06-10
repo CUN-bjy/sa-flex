@@ -111,6 +111,17 @@ def main(params: Optional[SlotAttentionParams] = None):
         for k, v in method.state_dict().items():
             if k in checkpoint['state_dict'].keys():
                 v.copy_(checkpoint['state_dict'][k])
+                
+        if params.freeze_encoder:
+            # freeze encoder part(including slot attention mechanism)
+            models_to_freeze = [method.model.encoder, method.model.encoder_pos_embedding,  
+                                method.model.encoder_out_layer, method.model.slot_attention]
+            for m in models_to_freeze:
+                for p in m.parameters():
+                    p.requires_grad = False
+            # to visualize gradient flows
+            for name, param in method.model.named_parameters():
+                print(name, param.requires_grad)
     
     if params.is_logger_enabled:
         prefix_args = {
