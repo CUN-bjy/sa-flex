@@ -69,7 +69,7 @@ class SlotAttentionMethod(pl.LightningModule):
 
         # backpropagate loss for slot attention
         opt_sa.zero_grad()
-        self.manual_backward(sa_loss, retain_graph=True)
+        self.manual_backward(sa_loss)
         
         # # Second Phase for updating discriminator
         # _, _, _, slots, _ = self.model.forward(batch_2, self.activate_mask)

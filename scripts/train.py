@@ -104,6 +104,14 @@ def main(params: Optional[SlotAttentionParams] = None):
 
     method = SlotAttentionMethod(model=model, datamodule=clevr_datamodule, params=params)
     
+    if params.ckp_path != "":
+        checkpoint = torch.load(params.ckp_path)
+        
+        # load pre-trained weights
+        for k, v in method.state_dict().items():
+            if k in checkpoint['state_dict'].keys():
+                v.copy_(checkpoint['state_dict'][k])
+    
     if params.is_logger_enabled:
         prefix_args = {
             "prefix": params.prefix,

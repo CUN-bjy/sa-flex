@@ -39,7 +39,7 @@ class SlotAttentionParams:
     hidden_mask_layer: int = 512
     
     # objective parameters
-    wakeup_sparse_mask_pct: float = 0.15
+    wakeup_sparse_mask_pct: float = 0.40
     auto_sparse_weight: bool = False
     sparse_weight: float = 0.0
     tc_weight: float = 0.0
@@ -48,3 +48,4 @@ class SlotAttentionParams:
     empty_cache: bool = True
     is_logger_enabled: bool = True
     is_verbose: bool = True
+    ckp_path: str = ""
