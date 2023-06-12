@@ -97,6 +97,37 @@ class SlotAttention(nn.Module):
 
         return slots
 
+class SparseMask(nn.Module):
+    def __init__(self, input_dim, slot_dim, hidden_dim=512, input_ratio=2):
+        super().__init__()
+        
+        self.ste = StraightThroughEstimator()
+        
+        in_dim, filter_dim = input_dim
+        num_slots, slot_size = slot_dim
+        N = input_ratio  # input : slots = input_ratio : 1
+        self.norm_inputs = nn.LayerNorm(filter_dim)
+        self.linear_map = nn.Linear(in_dim, N * num_slots, bias=False)
+        
+        in_features = 3 * num_slots * slot_size
+        out_features = num_slots
+        
+        self.linear_to_mask = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, out_features),
+        )
+        
+    def forward(self, inputs, slots):
+        batch_size = slots.size(0)
+        slots = slots.view(batch_size, -1)
+        norm_inputs = self.norm_inputs(inputs).permute(0, 2, 1)
+        mapped_inputs = self.linear_map(norm_inputs).permute(0, 2, 1).reshape(batch_size, -1)
+
+        fused_input = torch.cat([mapped_inputs, slots], dim=-1)
+        sparse_mask = self.ste(self.linear_to_mask(fused_input))
+        
+        return sparse_mask
 
 class SlotAttentionModel(nn.Module):
     def __init__(
@@ -127,8 +158,6 @@ class SlotAttentionModel(nn.Module):
         self.use_sparse_mask = use_sparse_mask
         self.hidden_mask_layer = hidden_mask_layer
         
-        self.ste = StraightThroughEstimator()
-        
         modules = []
         channels = self.in_channels
         # Build Encoder
@@ -156,12 +185,10 @@ class SlotAttentionModel(nn.Module):
         )
         
         if self.use_sparse_mask:
-            self.linear_to_mask = nn.Sequential(
-                nn.Linear(num_slots * slot_size, self.hidden_mask_layer),
-                nn.LeakyReLU(),
-                nn.Linear(self.hidden_mask_layer, num_slots),
-            )
-
+            input_dim = (resolution[0]*resolution[1], self.out_features)
+            slot_dim = (self.num_slots, self.slot_size)
+            self.sparse_mask = SparseMask(input_dim, slot_dim, self.hidden_mask_layer)
+            
         # Build Decoder
         modules = []
 
@@ -235,8 +262,7 @@ class SlotAttentionModel(nn.Module):
         
         if activate_mask:
             # extract slot-wise sparse-mask
-            slots_ = slots.view(batch_size, -1)
-            slotwise_masks = self.ste(self.linear_to_mask(slots_))
+            slotwise_masks = self.sparse_mask(encoder_out, slots)
 
             # slots with sparse-mask
             slots = slots * slotwise_masks.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
