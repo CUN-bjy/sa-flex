@@ -100,6 +100,7 @@ def main(params: Optional[SlotAttentionParams] = None):
         empty_cache=params.empty_cache,
         use_sparse_mask=params.use_sparse_mask,
         hidden_mask_layer=params.hidden_mask_layer,
+        feed_encoded_out=params.feed_encoded_out,
     )
 
     method = SlotAttentionMethod(model=model, datamodule=clevr_datamodule, params=params)
