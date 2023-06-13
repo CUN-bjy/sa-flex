@@ -40,6 +40,7 @@ class SlotAttentionParams:
     use_sparse_mask: bool = False
     hidden_mask_layer: int = 512
     feed_encoded_out: bool = False
+    tau_annealing: bool = False
     
     # objective parameters
     wakeup_sparse_mask_pct: float = 0.40

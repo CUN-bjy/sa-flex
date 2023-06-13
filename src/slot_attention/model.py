@@ -119,7 +119,7 @@ class SparseMask(nn.Module):
             nn.Linear(hidden_dim, out_features),
         )
         
-    def forward(self, inputs, slots):
+    def forward(self, inputs, slots, tau=1):
         batch_size = slots.size(0)
         slots = slots.view(batch_size, -1)
         
@@ -130,7 +130,7 @@ class SparseMask(nn.Module):
         else:
             in_ = slots
 
-        sparse_mask = F.gumbel_softmax(self.linear_to_mask(in_).view(batch_size, -1, 2), hard=True)[:,:,0]
+        sparse_mask = F.gumbel_softmax(self.linear_to_mask(in_).view(batch_size, -1, 2), tau=tau, hard=True)[:,:,0]
         
         return sparse_mask
 
@@ -248,7 +248,7 @@ class SlotAttentionModel(nn.Module):
             mlp_hidden_size=128,
         )
 
-    def forward(self, x, activate_mask=False):
+    def forward(self, x, activate_mask=False, m_tau=1):
         if self.empty_cache:
             torch.cuda.empty_cache()
 
@@ -269,7 +269,7 @@ class SlotAttentionModel(nn.Module):
         
         if activate_mask:
             # extract slot-wise sparse-mask
-            slotwise_masks = self.sparse_mask(encoder_out, slots)
+            slotwise_masks = self.sparse_mask(encoder_out, slots, m_tau)
 
             # slots with sparse-mask
             slots = slots * slotwise_masks.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
