@@ -48,7 +48,7 @@ class SlotAttentionMethod(pl.LightningModule):
         self.activate_mask = True if self.global_step > self.wakeup_sparse_steps else False
         
         # First Phase for updating slot encoder-decoder
-        anneal_tau = 1 - linear_annealing(0, 0.99, self.global_step, self.params.annealing_steps) if self.params.tau_annealing else 0
+        anneal_tau = 1 - (linear_annealing(0, 0.99, self.global_step, self.params.annealing_steps) if self.params.tau_annealing else 0)
         recon_combined, _, _, slots, _ = self.model.forward(batch_1, self.activate_mask, anneal_tau)
         mse_loss = F.mse_loss(recon_combined, batch_1)
         sparse_loss = torch.mean(torch.abs(F.relu(slots)))
@@ -214,8 +214,8 @@ class SlotAttentionMethod(pl.LightningModule):
         def warm_and_decay_lr_scheduler(step: int):
             warmup_steps = warmup_steps_pct * total_steps
             decay_steps = decay_steps_pct * total_steps
-            assert step < total_steps
-            if step < warmup_steps:
+            assert step <= total_steps
+            if step <= warmup_steps:
                 factor = step / warmup_steps
             else:
                 factor = 1

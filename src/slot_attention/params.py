@@ -43,7 +43,7 @@ class SlotAttentionParams:
     tau_annealing: bool = False
     
     # objective parameters
-    wakeup_sparse_mask_pct: float = 0.40
+    wakeup_sparse_mask_pct: float = 0.0
     auto_sparse_weight: bool = False
     sparse_weight: float = 0.0
     tc_weight: float = 0.0

@@ -130,7 +130,8 @@ class SparseMask(nn.Module):
         else:
             in_ = slots
 
-        sparse_mask = F.gumbel_softmax(self.linear_to_mask(in_).view(batch_size, -1, 2), tau=tau, hard=True)[:,:,0]
+        sparse_mask = F.gumbel_softmax(self.linear_to_mask(in_).view(batch_size, -1, 2), tau=tau, hard=True)
+        sparse_mask = sparse_mask[:,:,0] + F.relu(-sparse_mask[:,:,1])
         
         return sparse_mask
 
