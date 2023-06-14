@@ -98,7 +98,7 @@ class SlotAttention(nn.Module):
         return slots
 
 class SparseMask(nn.Module):
-    def __init__(self, input_dim, slot_dim, hidden_dim=512, input_ratio=2, feed_encoded_out=False):
+    def __init__(self, input_dim, slot_dim, hidden_dim=512, feed_encoded_out=False):
         super().__init__()
         
         self.ste = StraightThroughEstimator()
@@ -106,26 +106,27 @@ class SparseMask(nn.Module):
         
         in_dim, filter_dim = input_dim
         num_slots, slot_size = slot_dim
-        N = input_ratio  # input : slots = input_ratio : 1
+
         if feed_encoded_out:
             self.norm_inputs = nn.LayerNorm(filter_dim)
-            self.linear_map = nn.Linear(in_dim, N * num_slots, bias=False)
-        in_features = (N+1 if feed_encoded_out else 1) * num_slots * slot_size
-        out_features = num_slots*2
+            self.linear_map = nn.Linear(in_dim, num_slots, bias=False)
+        in_features = (2 if feed_encoded_out else 1) * slot_size
+        out_features = 2
         
         self.linear_to_mask = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.LeakyReLU(),
             nn.Linear(hidden_dim, out_features),
         )
         
     def forward(self, inputs, slots, tau=1):
         batch_size = slots.size(0)
-        slots = slots.view(batch_size, -1)
         
         if self.feed_encoded_out:
             norm_inputs = self.norm_inputs(inputs).permute(0, 2, 1)
-            mapped_inputs = self.linear_map(norm_inputs).permute(0, 2, 1).reshape(batch_size, -1)
+            mapped_inputs = self.linear_map(norm_inputs).permute(0, 2, 1)
             in_ = torch.cat([mapped_inputs, slots], dim=-1)
         else:
             in_ = slots
