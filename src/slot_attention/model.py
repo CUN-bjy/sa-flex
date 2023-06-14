@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from slot_attention.utils import Tensor
+from slot_attention.utils import Tensor, linear
 from slot_attention.utils import assert_shape
 from slot_attention.utils import build_grid
 from slot_attention.utils import conv_transpose_out_shape
@@ -109,16 +109,16 @@ class SparseMask(nn.Module):
 
         if feed_encoded_out:
             self.norm_inputs = nn.LayerNorm(filter_dim)
-            self.linear_map = nn.Linear(in_dim, num_slots, bias=False)
+            self.linear_map = linear(in_dim, num_slots, bias=False)
         in_features = (2 if feed_encoded_out else 1) * slot_size
-        out_features = 2
+        out_features = 1
         
         self.linear_to_mask = nn.Sequential(
-            nn.Linear(in_features, hidden_dim),
+            linear(in_features, hidden_dim),
             nn.LeakyReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            linear(hidden_dim, hidden_dim),
             nn.LeakyReLU(),
-            nn.Linear(hidden_dim, out_features),
+            linear(hidden_dim, out_features),
         )
         
     def forward(self, inputs, slots, tau=1):
@@ -131,8 +131,10 @@ class SparseMask(nn.Module):
         else:
             in_ = slots
 
-        sparse_mask = F.gumbel_softmax(self.linear_to_mask(in_).view(batch_size, -1, 2), tau=tau, hard=True)
-        sparse_mask = sparse_mask[:,:,0] + F.relu(-sparse_mask[:,:,1])
+    
+        sparse_mask = self.ste(self.linear_to_mask(in_)).squeeze()
+        # sparse_mask = F.gumbel_softmax(self.linear_to_mask(in_).view(batch_size, -1, 2), tau=tau, hard=True)
+        # sparse_mask = sparse_mask[:,:,0] + F.relu(-sparse_mask[:,:,1])
         
         return sparse_mask
 
@@ -275,7 +277,7 @@ class SlotAttentionModel(nn.Module):
 
             # slots with sparse-mask
             slots = slots * slotwise_masks.view(batch_size, num_slots, 1).repeat(1, 1, slot_size)
-        
+
         slots = slots.view(batch_size * num_slots, slot_size, 1, 1)
         decoder_in = slots.repeat(1, 1, self.decoder_resolution[0], self.decoder_resolution[1])
 

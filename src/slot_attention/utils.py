@@ -66,6 +66,20 @@ def to_rgb_from_tensor(x: Tensor):
     return (x * 0.5 + 0.5).clamp(0, 1)
 
 
+def linear(in_features, out_features, bias=True, weight_init='xavier', gain=1.):
+    
+    m = torch.nn.Linear(in_features, out_features, bias)
+    
+    if weight_init == 'kaiming':
+        torch.nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+    else:
+        torch.nn.init.xavier_uniform_(m.weight, gain)
+    
+    if bias:
+        torch.nn.init.zeros_(m.bias)
+    
+    return m
+
 def permute_dims(latent_sample):
     """
     Implementation of Algorithm 1 in ref [1]. Randomly permutes the sample from

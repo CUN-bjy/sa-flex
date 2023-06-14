@@ -92,7 +92,7 @@ class SlotAttentionMethod(pl.LightningModule):
         sh_sa.step()
         # opt_d.step()
         
-        logs = {"loss": sa_loss, "d_loss": d_loss, "sparse_weight": sparse_weight, "activate_mask": self.activate_mask}
+        logs = {"loss": sa_loss, "mse_loss": mse_loss, "sparse_loss": sparse_loss, "sparse_weight": sparse_weight, "sparse_weight*loss": sparse_weight*sparse_loss, "activate_mask": self.activate_mask}
         self.log_dict(logs, sync_dist=True)
 
     def sample_images(self):
