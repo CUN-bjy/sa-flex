@@ -56,3 +56,4 @@ class SlotAttentionParams:
     # pretrain
     ckp_path: str = ""
     freeze_encoder: bool = False
+    freeze_decoder: bool = False

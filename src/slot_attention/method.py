@@ -45,7 +45,7 @@ class SlotAttentionMethod(pl.LightningModule):
         sh_sa = self.lr_schedulers()
         
         # lazy wakeup to activate sparse mask
-        self.activate_mask = True if self.global_step > self.wakeup_sparse_steps else False
+        self.activate_mask = True if self.global_step >= self.wakeup_sparse_steps else False
         
         # First Phase for updating slot encoder-decoder
         anneal_tau = 1 - (linear_annealing(0, 0.99, self.global_step, self.params.annealing_steps) if self.params.tau_annealing else 0)

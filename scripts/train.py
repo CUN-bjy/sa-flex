@@ -120,9 +120,17 @@ def main(params: Optional[SlotAttentionParams] = None):
             for m in models_to_freeze:
                 for p in m.parameters():
                     p.requires_grad = False
-            # to visualize gradient flows
-            for name, param in method.model.named_parameters():
-                print(name, param.requires_grad)
+                    
+        if params.freeze_decoder:
+            # freeze decoder part
+            models_to_freeze = [method.model.decoder, method.model.decoder_pos_embedding]
+            for m in models_to_freeze:
+                for p in m.parameters():
+                    p.requires_grad = False
+            
+        # to visualize gradient flows
+        for name, param in method.model.named_parameters():
+            print(name, param.requires_grad)
     
     if params.is_logger_enabled:
         prefix_args = {
