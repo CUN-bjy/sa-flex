@@ -143,6 +143,9 @@ class SlotAttentionMethod(pl.LightningModule):
         batch_1, batch_2 = batch.split(batch.size(0)//2)
         gt_masks_1, gt_masks_2 = gt_masks.split(batch.size(0)//2)
         
+        # lazy wakeup to activate sparse mask
+        self.activate_mask = True if self.global_step >= self.wakeup_sparse_steps else False
+        
         # First Phase for updating slot encoder-decoder
         recon_combined, _, masks, slots, _ = self.model.forward(batch_1, self.activate_mask)
         
